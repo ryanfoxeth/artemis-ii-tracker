@@ -322,33 +322,32 @@
       <button data-view="3d">3D</button>
     </div>
     <select class="tz-select" id="tzSelect">
-      <option value="-11">UTC-11 Samoa</option>
-      <option value="-10">UTC-10 Honolulu</option>
-      <option value="-9">UTC-9 Anchorage</option>
-      <option value="-8">PST Los Angeles</option>
-      <option value="-7">MST Denver</option>
-      <option value="-6">CST Chicago</option>
-      <option value="-5">EST New York</option>
-      <option value="-4">AST Halifax</option>
-      <option value="-3">BRT São Paulo</option>
-      <option value="-2">UTC-2 Mid-Atlantic</option>
-      <option value="-1">UTC-1 Azores</option>
-      <option value="0">UTC London</option>
-      <option value="1">CET Paris</option>
-      <option value="2">EET Cairo</option>
-      <option value="3">MSK Moscow</option>
-      <option value="3.5">UTC+3:30 Tehran</option>
-      <option value="4">GST Dubai</option>
-      <option value="5">PKT Karachi</option>
-      <option value="5.5">IST Mumbai</option>
-      <option value="6">BST Dhaka</option>
-      <option value="7">ICT Bangkok</option>
-      <option value="8">CST Shanghai</option>
-      <option value="9">JST Tokyo</option>
-      <option value="9.5">ACST Adelaide</option>
-      <option value="10">AEST Sydney</option>
-      <option value="11">UTC+11 Noumea</option>
-      <option value="12">NZST Auckland</option>
+      <option value="UTC">UTC</option>
+      <option value="Pacific/Honolulu">Honolulu</option>
+      <option value="America/Anchorage">Anchorage</option>
+      <option value="America/Los_Angeles">Los Angeles</option>
+      <option value="America/Denver">Denver</option>
+      <option value="America/Chicago">Chicago</option>
+      <option value="America/New_York">New York</option>
+      <option value="America/Halifax">Halifax</option>
+      <option value="America/Sao_Paulo">São Paulo</option>
+      <option value="Atlantic/Azores">Azores</option>
+      <option value="Europe/London">London</option>
+      <option value="Europe/Paris">Paris</option>
+      <option value="Europe/Berlin">Berlin</option>
+      <option value="Africa/Cairo">Cairo</option>
+      <option value="Europe/Moscow">Moscow</option>
+      <option value="Asia/Tehran">Tehran</option>
+      <option value="Asia/Dubai">Dubai</option>
+      <option value="Asia/Karachi">Karachi</option>
+      <option value="Asia/Kolkata">Mumbai</option>
+      <option value="Asia/Dhaka">Dhaka</option>
+      <option value="Asia/Bangkok">Bangkok</option>
+      <option value="Asia/Shanghai">Shanghai</option>
+      <option value="Asia/Tokyo">Tokyo</option>
+      <option value="Australia/Adelaide">Adelaide</option>
+      <option value="Australia/Sydney">Sydney</option>
+      <option value="Pacific/Auckland">Auckland</option>
     </select>
   </div>
   <div class="elapsed">MET <span id="met">--d --h --m</span></div>
@@ -432,7 +431,7 @@ let eventsData = null;
 const KM_TO_MI = 0.621371;
 let useMetric = localStorage.getItem('artemis-units') === 'km';
 let use3D = localStorage.getItem('artemis-view') === '3d';
-let selectedTzOffset = parseFloat(localStorage.getItem('artemis-tz') || '0');
+let selectedTz = localStorage.getItem('artemis-tz') || 'UTC';
 
 function initPrefs() {
   // Units toggle
@@ -461,10 +460,10 @@ function initPrefs() {
 
   // Timezone selector
   const tzSel = document.getElementById('tzSelect');
-  tzSel.value = String(selectedTzOffset);
+  tzSel.value = selectedTz;
   tzSel.addEventListener('change', () => {
-    selectedTzOffset = parseFloat(tzSel.value);
-    localStorage.setItem('artemis-tz', String(selectedTzOffset));
+    selectedTz = tzSel.value;
+    localStorage.setItem('artemis-tz', selectedTz);
     renderTimeline();
     updateMetTimestamp();
   });
@@ -478,39 +477,28 @@ function updateToggleUI() {
 }
 
 function getTzLabel() {
-  if (selectedTzOffset === 0) return 'UTC';
-  const sign = selectedTzOffset > 0 ? '+' : '';
-  const hrs = Math.floor(Math.abs(selectedTzOffset));
-  const mins = (Math.abs(selectedTzOffset) % 1) * 60;
-  return mins ? `UTC${sign}${selectedTzOffset > 0 ? '' : '-'}${hrs}:${String(mins).padStart(2, '0')}` : `UTC${sign}${selectedTzOffset}`;
-}
-
-function applyTzOffset(date) {
-  // Returns a new Date shifted by the selected UTC offset
-  const utc = date.getTime() + date.getTimezoneOffset() * 60000;
-  return new Date(utc + selectedTzOffset * 3600000);
+  if (selectedTz === 'UTC') return 'UTC';
+  // Get the short timezone abbreviation (e.g. EDT, PDT, JST)
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: selectedTz, timeZoneName: 'short' }).formatToParts(new Date());
+    const tzPart = parts.find(p => p.type === 'timeZoneName');
+    return tzPart ? tzPart.value : selectedTz;
+  } catch { return selectedTz; }
 }
 
 function fmtDateTz(isoStr) {
-  const d = applyTzOffset(new Date(isoStr));
-  const mon = d.getMonth() + 1;
-  const day = d.getDate();
-  let h = d.getHours();
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const ampm = h >= 12 ? 'p' : 'a';
-  h = h % 12 || 12;
-  return `${mon}/${day} ${h}:${m}${ampm}`;
+  const d = new Date(isoStr);
+  const opts = { timeZone: selectedTz, month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true };
+  const str = d.toLocaleString('en-US', opts);
+  // Compact: "4/1, 6:35 PM" → "4/1 6:35p"
+  return str.replace(',', '').replace(' AM', 'a').replace(' PM', 'p');
 }
 
 function updateMetTimestamp() {
   if (!currentData) return;
-  const now = applyTzOffset(new Date());
-  const h = now.getHours() % 12 || 12;
-  const m = String(now.getMinutes()).padStart(2, '0');
-  const s = String(now.getSeconds()).padStart(2, '0');
-  const ampm = now.getHours() >= 12 ? 'PM' : 'AM';
-  document.getElementById('lastUpdate').textContent =
-    `Updated ${h}:${m}:${s} ${ampm} ${getTzLabel()}`;
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { timeZone: selectedTz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  document.getElementById('lastUpdate').textContent = `Updated ${timeStr} ${getTzLabel()}`;
 }
 
 // --- Formatting ---
