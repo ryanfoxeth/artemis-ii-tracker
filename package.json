@@ -1,0 +1,17 @@
+{
+  "name": "artemis-ii-tracker",
+  "description": "Live Artemis II mission tracker — real-time spacecraft telemetry from JPL Horizons",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

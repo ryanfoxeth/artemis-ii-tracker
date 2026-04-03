@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Artemis II Tracker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0a0a0f;
+      --panel: #111118;
+      --border: #1e1e2e;
+      --text: #c8c8d4;
+      --dim: #555566;
+      --accent: #4fc3f7;
+      --accent2: #81d4fa;
+      --earth: #4a90d9;
+      --moon: #b0b0b0;
+      --orion: #ff9800;
+      --green: #66bb6a;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      padding: 20px 24px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .header .mission-badge {
+      background: var(--orion);
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 3px;
+      letter-spacing: 1px;
+    }
+    .header .elapsed {
+      margin-left: auto;
+      font-size: 13px;
+      color: var(--dim);
+    }
+    .header .elapsed span { color: var(--green); }
+
+    /* Main grid */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      grid-template-rows: auto auto;
+      gap: 0;
+      min-height: calc(100vh - 60px);
+    }
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; }
+    }
+
+    /* Canvas area */
+    .viz-panel {
+      position: relative;
+      min-height: 500px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    #vizCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .viz-label {
+      position: absolute;
+      font-size: 10px;
+      color: var(--dim);
+      pointer-events: none;
+    }
+
+    /* Data panels */
+    .data-sidebar {
+      border-bottom: 1px solid var(--border);
+      overflow-y: auto;
+      max-height: calc(100vh - 60px);
+    }
+    .data-section {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-section:last-child { border-bottom: none; }
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--dim);
+      margin-bottom: 12px;
+    }
+
+    /* Metric rows */
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 4px 0;
+    }
+    .metric-label {
+      font-size: 11px;
+      color: var(--dim);
+    }
+    .metric-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-value.earth { color: var(--earth); }
+    .metric-value.moon { color: var(--moon); }
+    .metric-value.orion { color: var(--orion); }
+    .metric-value.accent { color: var(--accent); }
+    .metric-unit {
+      font-size: 10px;
+      color: var(--dim);
+      margin-left: 4px;
+    }
+
+    /* Big number */
+    .big-metric {
+      text-align: center;
+      padding: 8px 0;
+    }
+    .big-metric .value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      font-variant-numeric: tabular-nums;
+    }
+    .big-metric .label {
+      font-size: 10px;
+      color: var(--dim);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Timeline */
+    .timeline-event {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 6px 0;
+      font-size: 11px;
+    }
+    .timeline-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--dim);
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+    .timeline-dot.completed { background: var(--green); }
+    .timeline-dot.active { background: var(--orion); box-shadow: 0 0 6px var(--orion); }
+    .timeline-event .event-name { color: var(--text); font-weight: 600; }
+    .timeline-event .event-time { color: var(--dim); font-size: 10px; }
+
+    /* Crew */
+    .crew-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .crew-member {
+      font-size: 11px;
+      color: var(--accent2);
+      padding: 4px 8px;
+      background: rgba(79, 195, 247, 0.06);
+      border: 1px solid rgba(79, 195, 247, 0.12);
+      border-radius: 3px;
+      text-align: center;
+    }
+
+    /* Footer status */
+    .status-bar {
+      grid-column: 1 / -1;
+      padding: 8px 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--dim);
+    }
+    .status-bar .live-dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .status-bar a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .status-bar a:hover {
+      text-decoration: underline;
+    }
+
+    /* Loading state */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--dim);
+      font-size: 13px;
+    }
+    .loading::after {
+      content: '';
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      margin-left: 10px;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Error */
+    .error-msg {
+      padding: 20px;
+      color: #ef5350;
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Artemis II Tracker</h1>
+  <span class="mission-badge">LIVE</span>
+  <div class="elapsed">MET <span id="met">--d --h --m</span></div>
+</div>
+
+<div class="main">
+  <div class="viz-panel">
+    <canvas id="vizCanvas"></canvas>
+  </div>
+
+  <div class="data-sidebar">
+    <!-- Distance from Earth -->
+    <div class="data-section">
+      <div class="section-label">Distance from Earth</div>
+      <div class="big-metric">
+        <div class="value" id="earthDist">--</div>
+        <div class="label" id="earthDistLabel">-- km / -- mi</div>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Speed</span>
+        <span class="metric-value earth" id="earthSpeed">--</span>
+      </div>
+    </div>
+
+    <!-- Distance from Moon -->
+    <div class="data-section">
+      <div class="section-label">Distance from Moon</div>
+      <div class="big-metric">
+        <div class="value" id="moonDist">--</div>
+        <div class="label" id="moonDistLabel">-- km / -- mi</div>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Speed</span>
+        <span class="metric-value moon" id="moonSpeed">--</span>
+      </div>
+    </div>
+
+    <!-- Velocity -->
+    <div class="data-section">
+      <div class="section-label">Velocity Components (Earth-relative)</div>
+      <div class="metric">
+        <span class="metric-label">Vx</span>
+        <span class="metric-value accent" id="vx">--<span class="metric-unit">km/s</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Vy</span>
+        <span class="metric-value accent" id="vy">--<span class="metric-unit">km/s</span></span>
+      </div>
+      <div class="metric">
+        <span class="metric-label">Vz</span>
+        <span class="metric-value accent" id="vz">--<span class="metric-unit">km/s</span></span>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="data-section">
+      <div class="section-label">Mission Timeline</div>
+      <div id="timeline"></div>
+    </div>
+
+    <!-- Crew -->
+    <div class="data-section">
+      <div class="section-label">Crew</div>
+      <div class="crew-list" id="crew"></div>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <span><span class="live-dot"></span>Data: JPL Horizons (NASA/JPL) — Updates every 2 min</span>
+    <span>Artemis II Tracker — Open Source · <span id="lastUpdate">--</span></span>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+let currentData = null;
+let trajectoryData = null;
+let eventsData = null;
+
+// --- Formatting ---
+function fmtNum(n) {
+  if (n == null) return '--';
+  return Math.round(n).toLocaleString('en-US');
+}
+
+function fmtDec(n, dec = 3) {
+  if (n == null) return '--';
+  return n.toFixed(dec);
+}
+
+// --- Data fetch ---
+async function fetchNow() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/artemisii/now`);
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    currentData = await resp.json();
+    updateUI();
+  } catch (err) {
+    console.error('Failed to fetch current data:', err);
+  }
+}
+
+async function fetchEvents() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/artemisii/events`);
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    eventsData = await resp.json();
+    renderTimeline();
+  } catch (err) {
+    console.error('Failed to fetch events:', err);
+  }
+}
+
+function renderTimeline() {
+  if (!eventsData) return;
+  const timeline = document.getElementById('timeline');
+  const now = new Date();
+  let activeIdx = -1;
+
+  for (let i = 0; i < eventsData.length; i++) {
+    if (now >= new Date(eventsData[i].time)) activeIdx = i;
+  }
+
+  timeline.innerHTML = eventsData.map((e, i) => {
+    const completed = now >= new Date(e.time);
+    const active = i === activeIdx;
+    const dotClass = active ? 'active' : (completed ? 'completed' : '');
+    const t = new Date(e.time);
+    const timeStr = t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) + ' ' +
+                    t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }) + ' ET';
+    return `<div class="timeline-event">
+      <div class="timeline-dot ${dotClass}"></div>
+      <div>
+        <div class="event-name">${e.event}</div>
+        <div class="event-time">${timeStr}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function fetchTrajectory() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/artemisii/trajectory`);
+    if (!resp.ok) throw new Error(`${resp.status}`);
+    trajectoryData = await resp.json();
+    drawViz();
+  } catch (err) {
+    console.error('Failed to fetch trajectory:', err);
+  }
+}
+
+// --- UI Update ---
+function updateUI() {
+  if (!currentData) return;
+  const d = currentData;
+
+  // MET
+  document.getElementById('met').textContent = d.mission_elapsed?.formatted || '--';
+
+  // Earth distance
+  document.getElementById('earthDist').textContent = fmtNum(d.earth?.distance_km);
+  document.getElementById('earthDistLabel').textContent = `${fmtNum(d.earth?.distance_km)} km / ${fmtNum(d.earth?.distance_miles)} mi`;
+  document.getElementById('earthSpeed').innerHTML = `${fmtNum(d.earth?.speed_kmph)}<span class="metric-unit">km/h</span> / ${fmtNum(d.earth?.speed_mph)}<span class="metric-unit">mph</span>`;
+
+  // Moon distance
+  document.getElementById('moonDist').textContent = fmtNum(d.moon?.distance_km);
+  document.getElementById('moonDistLabel').textContent = `${fmtNum(d.moon?.distance_km)} km / ${fmtNum(d.moon?.distance_miles)} mi`;
+  document.getElementById('moonSpeed').innerHTML = `${fmtNum(d.moon?.speed_kmph)}<span class="metric-unit">km/h</span> / ${fmtNum(d.moon?.speed_mph)}<span class="metric-unit">mph</span>`;
+
+  // Velocity components
+  document.getElementById('vx').innerHTML = `${fmtDec(d.earth?.velocity_kmps?.vx)}<span class="metric-unit">km/s</span>`;
+  document.getElementById('vy').innerHTML = `${fmtDec(d.earth?.velocity_kmps?.vy)}<span class="metric-unit">km/s</span>`;
+  document.getElementById('vz').innerHTML = `${fmtDec(d.earth?.velocity_kmps?.vz)}<span class="metric-unit">km/s</span>`;
+
+  // Timeline — rendered from eventsData (fetched from /api/artemisii/events)
+  renderTimeline();
+
+  // Crew
+  const crew = document.getElementById('crew');
+  crew.innerHTML = (d.crew || []).map(name =>
+    `<div class="crew-member">${name}</div>`
+  ).join('');
+
+  // Last update
+  document.getElementById('lastUpdate').textContent =
+    `Updated ${new Date().toLocaleTimeString()}`;
+
+  drawViz();
+}
+
+// --- Canvas Visualization ---
+function drawViz() {
+  const canvas = document.getElementById('vizCanvas');
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * devicePixelRatio;
+  canvas.height = rect.height * devicePixelRatio;
+  canvas.style.width = rect.width + 'px';
+  canvas.style.height = rect.height + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  const W = rect.width;
+  const H = rect.height;
+
+  // Clear
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, W, H);
+
+  // Star field
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  const seed = 42;
+  for (let i = 0; i < 120; i++) {
+    const sx = ((seed * (i + 1) * 7919) % 10000) / 10000 * W;
+    const sy = ((seed * (i + 1) * 104729) % 10000) / 10000 * H;
+    const sr = ((i * 31) % 3 === 0) ? 1.2 : 0.6;
+    ctx.beginPath();
+    ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Layout: Earth on the left, Moon on the right
+  // Earth-Moon distance ~384,400 km
+  const EARTH_MOON_DIST = 384400;
+  const margin = 80;
+  const trackW = W - margin * 2;
+
+  // Positions on canvas
+  const earthCX = margin + 40;
+  const moonCX = W - margin - 20;
+  const centerY = H * 0.45;
+
+  // Scale: pixels per km
+  const scale = (moonCX - earthCX) / EARTH_MOON_DIST;
+
+  // Draw faint line Earth-Moon
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 8]);
+  ctx.beginPath();
+  ctx.moveTo(earthCX, centerY);
+  ctx.lineTo(moonCX, centerY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw distance scale
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 4; i++) {
+    const km = (EARTH_MOON_DIST / 4) * i;
+    const px = earthCX + (moonCX - earthCX) * (i / 4);
+    ctx.fillText(`${Math.round(km / 1000)}k`, px, centerY + 50);
+    ctx.fillRect(px - 0.5, centerY + 35, 1, 8);
+  }
+
+  // Draw Earth
+  const earthR = 22;
+  const earthGrad = ctx.createRadialGradient(earthCX - 4, centerY - 4, 2, earthCX, centerY, earthR);
+  earthGrad.addColorStop(0, '#6ab7ff');
+  earthGrad.addColorStop(0.5, '#4a90d9');
+  earthGrad.addColorStop(1, '#1a3a5c');
+  ctx.beginPath();
+  ctx.arc(earthCX, centerY, earthR, 0, Math.PI * 2);
+  ctx.fillStyle = earthGrad;
+  ctx.fill();
+
+  // Earth glow
+  ctx.beginPath();
+  ctx.arc(earthCX, centerY, earthR + 6, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(74, 144, 217, 0.2)';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#4a90d9';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('EARTH', earthCX, centerY + earthR + 22);
+
+  // Draw Moon
+  const moonR = 10;
+  const moonGrad = ctx.createRadialGradient(moonCX - 2, centerY - 2, 1, moonCX, centerY, moonR);
+  moonGrad.addColorStop(0, '#d0d0d0');
+  moonGrad.addColorStop(0.6, '#a0a0a0');
+  moonGrad.addColorStop(1, '#606060');
+  ctx.beginPath();
+  ctx.arc(moonCX, centerY, moonR, 0, Math.PI * 2);
+  ctx.fillStyle = moonGrad;
+  ctx.fill();
+
+  ctx.fillStyle = '#b0b0b0';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('MOON', moonCX, centerY + moonR + 22);
+
+  // Draw trajectory path if available
+  if (trajectoryData && trajectoryData.points && trajectoryData.points.length > 1) {
+    const points = trajectoryData.points;
+    // Project 3D trajectory to 2D — use distance from Earth as the X axis
+    // and use Y component for vertical offset (compressed)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255, 152, 0, 0.25)';
+    ctx.lineWidth = 1.5;
+
+    for (let i = 0; i < points.length; i++) {
+      const dist = points[i].distance_km;
+      const px = earthCX + dist * scale;
+      // Use Y component for vertical position, scaled down
+      const py = centerY + (points[i].y / EARTH_MOON_DIST) * (moonCX - earthCX) * 0.3;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // Draw Orion position
+  if (currentData && currentData.earth) {
+    const distFromEarth = currentData.earth.distance_km;
+    const orionX = earthCX + distFromEarth * scale;
+    // Use Y position from earth-relative vectors for vertical offset
+    const yOffset = currentData.earth.position_km ?
+      (currentData.earth.position_km.y / EARTH_MOON_DIST) * (moonCX - earthCX) * 0.3 : 0;
+    const orionY = centerY + yOffset;
+
+    // Orion glow
+    const orionGlow = ctx.createRadialGradient(orionX, orionY, 0, orionX, orionY, 20);
+    orionGlow.addColorStop(0, 'rgba(255, 152, 0, 0.4)');
+    orionGlow.addColorStop(1, 'rgba(255, 152, 0, 0)');
+    ctx.fillStyle = orionGlow;
+    ctx.fillRect(orionX - 20, orionY - 20, 40, 40);
+
+    // Orion dot
+    ctx.beginPath();
+    ctx.arc(orionX, orionY, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff9800';
+    ctx.fill();
+    ctx.strokeStyle = '#ffcc80';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#ff9800';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('ORION', orionX, orionY - 14);
+
+    // Distance lines
+    ctx.setLineDash([2, 4]);
+    ctx.strokeStyle = 'rgba(255, 152, 0, 0.15)';
+    ctx.lineWidth = 1;
+
+    // Line to Earth
+    ctx.beginPath();
+    ctx.moveTo(earthCX + earthR + 4, centerY);
+    ctx.lineTo(orionX - 8, orionY);
+    ctx.stroke();
+
+    // Line to Moon
+    ctx.beginPath();
+    ctx.moveTo(orionX + 8, orionY);
+    ctx.lineTo(moonCX - moonR - 4, centerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Distance labels on lines
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'rgba(255, 152, 0, 0.6)';
+    const midEarth = { x: (earthCX + orionX) / 2, y: (centerY + orionY) / 2 - 10 };
+    ctx.fillText(`${fmtNum(distFromEarth)} km / ${fmtNum(distFromEarth * 0.621371)} mi`, midEarth.x, midEarth.y);
+
+    if (currentData.moon) {
+      const distFromMoon = currentData.moon.distance_km;
+      const midMoon = { x: (orionX + moonCX) / 2, y: (orionY + centerY) / 2 - 10 };
+      ctx.fillText(`${fmtNum(distFromMoon)} km / ${fmtNum(distFromMoon * 0.621371)} mi`, midMoon.x, midMoon.y);
+    }
+
+    // Speed indicator bottom-left
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(16, H - 78, 200, 68);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${fmtNum(currentData.earth.speed_kmph)} km/h`, 26, H - 48);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.font = '14px monospace';
+    ctx.fillText(`${fmtNum(currentData.earth.speed_mph)} mph`, 26, H - 30);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font = '10px monospace';
+    ctx.fillText('SPEED (EARTH-RELATIVE)', 26, H - 16);
+  }
+
+  // Title in viz
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('ECLIPTIC PLANE PROJECTION — J2000', 16, 20);
+}
+
+// --- Init ---
+async function init() {
+  await fetchEvents();
+  await fetchNow();
+  await fetchTrajectory();
+
+  // Refresh current position every 2 minutes
+  setInterval(fetchNow, 120_000);
+  // Refresh trajectory every 10 minutes
+  setInterval(fetchTrajectory, 600_000);
+}
+
+// Handle resize
+window.addEventListener('resize', () => drawViz());
+
+init();
+</script>
+</body>
+</html>
