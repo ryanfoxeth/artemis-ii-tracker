@@ -317,10 +317,6 @@
       <button class="active" data-unit="mi">MI</button>
       <button data-unit="km">KM</button>
     </div>
-    <div class="unit-toggle" id="viewToggle">
-      <button class="active" data-view="2d">2D</button>
-      <button data-view="3d">3D</button>
-    </div>
     <select class="tz-select" id="tzSelect">
       <option value="UTC">UTC</option>
       <option value="Pacific/Honolulu">Honolulu</option>
@@ -430,7 +426,7 @@ let eventsData = null;
 // --- Preferences ---
 const KM_TO_MI = 0.621371;
 let useMetric = localStorage.getItem('artemis-units') === 'km';
-let use3D = localStorage.getItem('artemis-view') === '3d';
+const use3D = true;
 let selectedTz = localStorage.getItem('artemis-tz') || 'UTC';
 
 function initPrefs() {
@@ -444,17 +440,6 @@ function initPrefs() {
     localStorage.setItem('artemis-units', useMetric ? 'km' : 'mi');
     updateToggleUI();
     updateUI();
-    drawViz();
-  });
-
-  // View toggle (2D/3D)
-  const viewToggle = document.getElementById('viewToggle');
-  viewToggle.addEventListener('click', (e) => {
-    const btn = e.target.closest('button');
-    if (!btn) return;
-    use3D = btn.dataset.view === '3d';
-    localStorage.setItem('artemis-view', use3D ? '3d' : '2d');
-    updateToggleUI();
     drawViz();
   });
 
@@ -472,8 +457,6 @@ function initPrefs() {
 function updateToggleUI() {
   document.querySelectorAll('#unitToggle button').forEach(b =>
     b.classList.toggle('active', b.dataset.unit === (useMetric ? 'km' : 'mi')));
-  document.querySelectorAll('#viewToggle button').forEach(b =>
-    b.classList.toggle('active', b.dataset.view === (use3D ? '3d' : '2d')));
 }
 
 function getTzLabel() {
@@ -825,6 +808,13 @@ function drawViz() {
   ctx.font = '10px monospace';
   ctx.textAlign = 'left';
   ctx.fillText('ECLIPTIC PLANE PROJECTION — J2000', 16, 20);
+
+  // Explanation note at bottom-right
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('Distances are 3D — Orion does not travel in a straight line to the Moon', W - 16, H - 10);
+  ctx.textAlign = 'left';
 }
 
 // --- Init ---
