@@ -192,6 +192,60 @@
       text-align: center;
     }
 
+    /* Header controls */
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: 12px;
+    }
+    .unit-toggle {
+      display: flex;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .unit-toggle button {
+      background: none;
+      border: none;
+      color: var(--dim);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .unit-toggle button.active {
+      background: var(--accent);
+      color: #000;
+    }
+    .tz-select {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      color: var(--dim);
+      font-family: inherit;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      padding: 4px 6px;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23555566'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 6px center;
+      padding-right: 18px;
+    }
+    .tz-select:focus {
+      outline: 1px solid var(--accent);
+      color: var(--text);
+    }
+
     /* Footer status */
     .status-bar {
       grid-column: 1 / -1;
@@ -258,6 +312,19 @@
 <div class="header">
   <h1>Artemis II Tracker</h1>
   <span class="mission-badge">LIVE</span>
+  <div class="header-controls">
+    <div class="unit-toggle" id="unitToggle">
+      <button class="active" data-unit="mi">MI</button>
+      <button data-unit="km">KM</button>
+    </div>
+    <select class="tz-select" id="tzSelect">
+      <option value="UTC">UTC</option>
+      <option value="America/New_York" data-label="EST" data-dst-label="EDT">EST</option>
+      <option value="America/Chicago" data-label="CST" data-dst-label="CDT">CST</option>
+      <option value="America/Denver" data-label="MST" data-dst-label="MDT">MST</option>
+      <option value="America/Los_Angeles" data-label="PST" data-dst-label="PDT">PST</option>
+    </select>
+  </div>
   <div class="elapsed">MET <span id="met">--d --h --m</span></div>
 </div>
 
@@ -335,6 +402,63 @@ let currentData = null;
 let trajectoryData = null;
 let eventsData = null;
 
+// --- Preferences ---
+const KM_TO_MI = 0.621371;
+let useMetric = localStorage.getItem('artemis-units') === 'km';
+let selectedTz = localStorage.getItem('artemis-tz') || 'UTC';
+
+function initPrefs() {
+  // Units toggle
+  const toggle = document.getElementById('unitToggle');
+  updateToggleUI();
+  toggle.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    useMetric = btn.dataset.unit === 'km';
+    localStorage.setItem('artemis-units', useMetric ? 'km' : 'mi');
+    updateToggleUI();
+    updateUI();
+    drawViz();
+  });
+
+  // Timezone selector
+  const tzSel = document.getElementById('tzSelect');
+  tzSel.value = selectedTz;
+  tzSel.addEventListener('change', () => {
+    selectedTz = tzSel.value;
+    localStorage.setItem('artemis-tz', selectedTz);
+    renderTimeline();
+    updateMetTimestamp();
+  });
+}
+
+function updateToggleUI() {
+  const btns = document.querySelectorAll('#unitToggle button');
+  btns.forEach(b => b.classList.toggle('active', b.dataset.unit === (useMetric ? 'km' : 'mi')));
+}
+
+function getTzLabel() {
+  if (selectedTz === 'UTC') return 'UTC';
+  const opt = document.querySelector(`#tzSelect option[value="${selectedTz}"]`);
+  if (!opt) return '';
+  // Check if date is in DST
+  const now = new Date();
+  const jan = new Date(now.getFullYear(), 0, 1);
+  const jul = new Date(now.getFullYear(), 6, 1);
+  const janOff = new Date(jan.toLocaleString('en-US', { timeZone: selectedTz })).getTime() - jan.getTime();
+  const julOff = new Date(jul.toLocaleString('en-US', { timeZone: selectedTz })).getTime() - jul.getTime();
+  const nowOff = new Date(now.toLocaleString('en-US', { timeZone: selectedTz })).getTime() - now.getTime();
+  const isDST = Math.max(janOff, julOff) === nowOff;
+  return isDST ? opt.dataset.dstLabel : opt.dataset.label;
+}
+
+function updateMetTimestamp() {
+  // Re-render the last update timestamp with the selected timezone
+  if (!currentData) return;
+  document.getElementById('lastUpdate').textContent =
+    `Updated ${new Date().toLocaleTimeString('en-US', { timeZone: selectedTz, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })} ${getTzLabel()}`;
+}
+
 // --- Formatting ---
 function fmtNum(n) {
   if (n == null) return '--';
@@ -344,6 +468,19 @@ function fmtNum(n) {
 function fmtDec(n, dec = 3) {
   if (n == null) return '--';
   return n.toFixed(dec);
+}
+
+function fmtDist(km) {
+  if (km == null) return '--';
+  return useMetric ? fmtNum(km) : fmtNum(km * KM_TO_MI);
+}
+
+function distUnit() { return useMetric ? 'km' : 'mi'; }
+function speedUnit() { return useMetric ? 'km/h' : 'mph'; }
+
+function fmtSpeed(kmph, mph) {
+  if (useMetric) return fmtNum(kmph);
+  return fmtNum(mph);
 }
 
 // --- Data fetch ---
@@ -379,13 +516,14 @@ function renderTimeline() {
     if (now >= new Date(eventsData[i].time)) activeIdx = i;
   }
 
+  const tzLabel = getTzLabel();
   timeline.innerHTML = eventsData.map((e, i) => {
     const completed = now >= new Date(e.time);
     const active = i === activeIdx;
     const dotClass = active ? 'active' : (completed ? 'completed' : '');
     const t = new Date(e.time);
-    const timeStr = t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) + ' ' +
-                    t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'America/New_York' }) + ' ET';
+    const timeStr = t.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: selectedTz }) + ' ' +
+                    t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: selectedTz }) + ' ' + tzLabel;
     return `<div class="timeline-event">
       <div class="timeline-dot ${dotClass}"></div>
       <div>
@@ -416,14 +554,14 @@ function updateUI() {
   document.getElementById('met').textContent = d.mission_elapsed?.formatted || '--';
 
   // Earth distance
-  document.getElementById('earthDist').textContent = fmtNum(d.earth?.distance_km);
-  document.getElementById('earthDistLabel').textContent = `${fmtNum(d.earth?.distance_km)} km / ${fmtNum(d.earth?.distance_miles)} mi`;
-  document.getElementById('earthSpeed').innerHTML = `${fmtNum(d.earth?.speed_kmph)}<span class="metric-unit">km/h</span> / ${fmtNum(d.earth?.speed_mph)}<span class="metric-unit">mph</span>`;
+  document.getElementById('earthDist').textContent = fmtDist(d.earth?.distance_km);
+  document.getElementById('earthDistLabel').textContent = `${fmtDist(d.earth?.distance_km)} ${distUnit()}`;
+  document.getElementById('earthSpeed').innerHTML = `${fmtSpeed(d.earth?.speed_kmph, d.earth?.speed_mph)}<span class="metric-unit">${speedUnit()}</span>`;
 
   // Moon distance
-  document.getElementById('moonDist').textContent = fmtNum(d.moon?.distance_km);
-  document.getElementById('moonDistLabel').textContent = `${fmtNum(d.moon?.distance_km)} km / ${fmtNum(d.moon?.distance_miles)} mi`;
-  document.getElementById('moonSpeed').innerHTML = `${fmtNum(d.moon?.speed_kmph)}<span class="metric-unit">km/h</span> / ${fmtNum(d.moon?.speed_mph)}<span class="metric-unit">mph</span>`;
+  document.getElementById('moonDist').textContent = fmtDist(d.moon?.distance_km);
+  document.getElementById('moonDistLabel').textContent = `${fmtDist(d.moon?.distance_km)} ${distUnit()}`;
+  document.getElementById('moonSpeed').innerHTML = `${fmtSpeed(d.moon?.speed_kmph, d.moon?.speed_mph)}<span class="metric-unit">${speedUnit()}</span>`;
 
   // Velocity components
   document.getElementById('vx').innerHTML = `${fmtDec(d.earth?.velocity_kmps?.vx)}<span class="metric-unit">km/s</span>`;
@@ -440,8 +578,7 @@ function updateUI() {
   ).join('');
 
   // Last update
-  document.getElementById('lastUpdate').textContent =
-    `Updated ${new Date().toLocaleTimeString()}`;
+  updateMetTimestamp();
 
   drawViz();
 }
@@ -505,8 +642,9 @@ function drawViz() {
   ctx.textAlign = 'center';
   for (let i = 0; i <= 4; i++) {
     const km = (EARTH_MOON_DIST / 4) * i;
+    const val = useMetric ? km : km * KM_TO_MI;
     const px = earthCX + (moonCX - earthCX) * (i / 4);
-    ctx.fillText(`${Math.round(km / 1000)}k`, px, centerY + 50);
+    ctx.fillText(`${Math.round(val / 1000)}k ${distUnit()}`, px, centerY + 50);
     ctx.fillRect(px - 0.5, centerY + 35, 1, 8);
   }
 
@@ -622,24 +760,21 @@ function drawViz() {
     ctx.font = '10px monospace';
     ctx.fillStyle = 'rgba(255, 152, 0, 0.6)';
     const midEarth = { x: (earthCX + orionX) / 2, y: (centerY + orionY) / 2 - 10 };
-    ctx.fillText(`${fmtNum(distFromEarth)} km / ${fmtNum(distFromEarth * 0.621371)} mi`, midEarth.x, midEarth.y);
+    ctx.fillText(`${fmtDist(distFromEarth)} ${distUnit()}`, midEarth.x, midEarth.y);
 
     if (currentData.moon) {
       const distFromMoon = currentData.moon.distance_km;
       const midMoon = { x: (orionX + moonCX) / 2, y: (orionY + centerY) / 2 - 10 };
-      ctx.fillText(`${fmtNum(distFromMoon)} km / ${fmtNum(distFromMoon * 0.621371)} mi`, midMoon.x, midMoon.y);
+      ctx.fillText(`${fmtDist(distFromMoon)} ${distUnit()}`, midMoon.x, midMoon.y);
     }
 
     // Speed indicator bottom-left
     ctx.fillStyle = 'rgba(255,255,255,0.08)';
-    ctx.fillRect(16, H - 78, 200, 68);
+    ctx.fillRect(16, H - 62, 200, 52);
     ctx.fillStyle = '#4fc3f7';
     ctx.font = 'bold 18px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(`${fmtNum(currentData.earth.speed_kmph)} km/h`, 26, H - 48);
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.font = '14px monospace';
-    ctx.fillText(`${fmtNum(currentData.earth.speed_mph)} mph`, 26, H - 30);
+    ctx.fillText(`${fmtSpeed(currentData.earth.speed_kmph, currentData.earth.speed_mph)} ${speedUnit()}`, 26, H - 32);
     ctx.fillStyle = 'rgba(255,255,255,0.3)';
     ctx.font = '10px monospace';
     ctx.fillText('SPEED (EARTH-RELATIVE)', 26, H - 16);
@@ -654,6 +789,7 @@ function drawViz() {
 
 // --- Init ---
 async function init() {
+  initPrefs();
   await fetchEvents();
   await fetchNow();
   await fetchTrajectory();
